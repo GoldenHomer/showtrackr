@@ -176,7 +176,7 @@ app.post('/api/shows', function(req, res, next) {
 
 // End routes
 
-//Erro
+//Error
 app.set('port', process.env.PORT || 3000);
 app.use(logger('dev'));
 app.use(bodyParser.json());
