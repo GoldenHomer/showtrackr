@@ -43,11 +43,19 @@ var userSchema = new mongoose.Schema({
 
 userSchema.pre('save', function(next) {
   var user = this;
-  if (!user.isModified('password')) return next();
+  if (!user.isModified('password')) {
+    return next();
+  }
+
   bcrypt.genSalt(10, function(err, salt) {
-    if (err) return next(err);
+    if (err){
+      return next(err);
+    }
+
     bcrypt.hash(user.password, salt, function(err, hash) {
-      if (err) return next(err);
+      if (err) {
+        return next(err);
+      }
       user.password = hash;
       next();
     });
@@ -73,11 +81,14 @@ app.get('/api/shows', function(req, res, next) {
   var query = Show.find();
   if (req.query.genre) {
     query.where({ genre: req.query.genre });
-  } else if (req.query.alphabet) {
+  } 
+  else if (req.query.alphabet) {
     query.where({ name: new RegExp('^' + '[' + req.query.alphabet + ']', 'i') });
-  } else {
+  } 
+  else {
     query.limit(12);
   }
+  
   query.exec(function(err, shows) {
     if (err) return next(err);
     res.send(shows);

@@ -1,4 +1,4 @@
-angular.module('MyApp', ['ngCookies', 'ngResource', 'ngMessages', 'ngRoute', 'mgcrea.ngStrap'])
+angular.module('ShowTrackrApp', ['ngCookies', 'ngResource', 'ngMessages', 'ngRoute', 'mgcrea.ngStrap'])
   .config(['$locationProvider','$routeProvider',function($locationProvider,$routeProvider) {
 	$locationProvider.html5Mode(true);
 
