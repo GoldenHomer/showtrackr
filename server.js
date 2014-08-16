@@ -1,11 +1,36 @@
+var mongoose = require('mongoose');
+var bcrypt = require('bcryptjs');
+
+var showSchema = new mongoose.Schema({
+  _id: Number,
+  name: String,
+  airsDayOfWeek: String,
+  airsTime: String,
+  firstAired: Date,
+  genre: [String],
+  network: String,
+  overview: String,
+  rating: Number,
+  ratingCount: Number,
+  status: String,
+  poster: String,
+  subscribers: [{
+    type: mongoose.Schema.Types.ObjectId, ref: 'User' // subscribers is an array of user object IDs
+  }],
+  episodes: [{
+      season: Number,
+      episodeNumber: Number,
+      episodeName: String,
+      firstAired: Date,
+      overview: String
+  }]
+});
+
 var express = require('express');
 var path = require('path');
 var logger = require('morgan');
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
-// Added
-var mongoose = require('mongoose');
-var bcrypt = require('bcryptjs');
 var async = require('async');
 var request = require('request');
 var xml2js = require('xml2js');
@@ -27,7 +52,7 @@ app.get('/api/shows', function(req, res, next) {
   }
   
   query.exec(function(err, shows) {
-    if (err) return next(err);
+    if (err) return next(err); // If there is an error, pass to error middleware.
     res.send(shows);
   });
 });
@@ -37,17 +62,6 @@ app.get('/api/shows/:id', function(req, res, next) {
     if (err) return next(err);
     res.send(show);
   });
-});
-
-//Fix HTML5 pushState on client-side
-app.get('*', function(req, res) {
-  res.redirect('/#' + req.originalUrl);
-});
-
-//Error Middleware
-app.use(function(err, req, res, next) {
-  console.error(err.stack);
-  res.send(500, { message: err.message });
 });
 
 app.post('/api/shows', function(req, res, next) {
@@ -61,11 +75,15 @@ app.post('/api/shows', function(req, res, next) {
     .replace(/ /g, '_')
     .replace(/[^\w-]+/g, '');
   
-  async.waterfall([
+  async.waterfall([ // https://github.com/caolan/async#waterfalltasks-callback
     function(callback) {
       request.get('http://thetvdb.com/api/GetSeries.php?seriesname=' + seriesName, function(error, response, body) {
         if (error) return next(error);
         parser.parseString(body, function(err, result) {
+          if(!result.data.series){
+            return res.send(404, {message: req.body.showName + ' was not found.'});
+          }
+
           var seriesId = result.data.series.seriesid || result.data.series[0].seriesid;
           callback(err, seriesId);
         });
@@ -116,37 +134,30 @@ app.post('/api/shows', function(req, res, next) {
   ], function(err, show) {
     if (err) return next(err);
     show.save(function(err) {
-      if (err) return next(err);
+      if (err){
+        if(err.code == 11000){ // 11000 is the duplicate error in Mongo
+          return res.send(409, {message: show.name + ' already exists'});
+        }
+        return next(err);
+      } 
       res.send(200);
     });
   });
 });
 
-// End routes
-var showSchema = new mongoose.Schema({
-  _id: Number,
-  name: String,
-  airsDayOfWeek: String,
-  airsTime: String,
-  firstAired: Date,
-  genre: [String],
-  network: String,
-  overview: String,
-  rating: Number,
-  ratingCount: Number,
-  status: String,
-  poster: String,
-  subscribers: [{
-    type: mongoose.Schema.Types.ObjectId, ref: 'User' // subscribers is an array of user object IDs
-  }],
-  episodes: [{
-      season: Number,
-      episodeNumber: Number,
-      episodeName: String,
-      firstAired: Date,
-      overview: String
-  }]
+//Fix HTML5 pushState on client-side
+app.get('*', function(req, res) {
+  res.redirect('/#' + req.originalUrl);
 });
+// End routes
+
+//Error Middleware
+app.use(function(err, req, res, next) {
+  console.error(err.stack);
+  res.send(500, { message: err.message });
+});
+
+
 
 var userSchema = new mongoose.Schema({
   email: { type: String, unique: true },
