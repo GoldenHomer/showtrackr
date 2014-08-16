@@ -70,6 +70,7 @@ app.post('/api/shows', function(req, res, next) {
     explicitArray: false,
     normalizeTags: true
   });
+  
   var seriesName = req.body.showName
     .toLowerCase()
     .replace(/ /g, '_')
