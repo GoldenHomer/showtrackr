@@ -2,7 +2,7 @@
   <div class="container">
     <ul class="alphabet">
       <li ng-repeat="char in alphabet">
-        <span ng-click="filterByAlphabet(char)">{{char}}</span>
+        <span ng-click="filterByAlphabet(char)">{{char}}</span> <!-- This and genre code below should be obvious in what they do-->
       </li>
     </ul>
     <ul class="genres">
@@ -25,7 +25,7 @@
       <div class="row show-list">
         <div class="col-xs-4 col-md-3" ng-repeat="show in shows | filter:query | orderBy:'rating':true">
           <a href="/shows/{{show._id}}">
-            <img class="img-rounded" ng-src="{{show.poster}}" width="100%"/>
+            <img class="img-rounded" ng-src="{{show.poster}}" width="100%"/> <!--Show thumbnail of each show -->
           </a>
           <div class="text-center">
             <a href="/shows/{{show._id}}">{{show.name}}</a>

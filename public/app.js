@@ -26,4 +26,4 @@ angular.module('ShowTrackrApp', ['ngCookies', 'ngResource', 'ngMessages', 'ngRou
       .otherwise({
         redirectTo: '/'
       });
- }]);
+  }]);

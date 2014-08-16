@@ -11,69 +11,6 @@ var request = require('request');
 var xml2js = require('xml2js');
 var _ = require('lodash');
 
-var showSchema = new mongoose.Schema({
-  _id: Number,
-  name: String,
-  airsDayOfWeek: String,
-  airsTime: String,
-  firstAired: Date,
-  genre: [String],
-  network: String,
-  overview: String,
-  rating: Number,
-  ratingCount: Number,
-  status: String,
-  poster: String,
-  subscribers: [{
-    type: mongoose.Schema.Types.ObjectId, ref: 'User'
-  }],
-  episodes: [{
-      season: Number,
-      episodeNumber: Number,
-      episodeName: String,
-      firstAired: Date,
-      overview: String
-  }]
-});
-
-var userSchema = new mongoose.Schema({
-  email: { type: String, unique: true },
-  password: String
-});
-
-userSchema.pre('save', function(next) {
-  var user = this;
-  if (!user.isModified('password')) {
-    return next();
-  }
-
-  bcrypt.genSalt(10, function(err, salt) {
-    if (err){
-      return next(err);
-    }
-
-    bcrypt.hash(user.password, salt, function(err, hash) {
-      if (err) {
-        return next(err);
-      }
-      user.password = hash;
-      next();
-    });
-  });
-});
-
-
-userSchema.methods.comparePassword = function(candidatePassword, cb) {
-  bcrypt.compare(candidatePassword, this.password, function(err, isMatch) {
-    if (err) return cb(err);
-    cb(null, isMatch);
-  });
-};
-
-var User = mongoose.model('User', userSchema);
-var Show = mongoose.model('Show', showSchema);
-mongoose.connect('localhost');
-
 var app = express();
 
 //Routes
@@ -186,9 +123,72 @@ app.post('/api/shows', function(req, res, next) {
 });
 
 // End routes
+var showSchema = new mongoose.Schema({
+  _id: Number,
+  name: String,
+  airsDayOfWeek: String,
+  airsTime: String,
+  firstAired: Date,
+  genre: [String],
+  network: String,
+  overview: String,
+  rating: Number,
+  ratingCount: Number,
+  status: String,
+  poster: String,
+  subscribers: [{
+    type: mongoose.Schema.Types.ObjectId, ref: 'User' // subscribers is an array of user object IDs
+  }],
+  episodes: [{
+      season: Number,
+      episodeNumber: Number,
+      episodeName: String,
+      firstAired: Date,
+      overview: String
+  }]
+});
+
+var userSchema = new mongoose.Schema({
+  email: { type: String, unique: true },
+  password: String
+});
+
+userSchema.pre('save', function(next) { // Mongoose serial pre-type middleware that executes one after another, when each middleware calls next.
+  var user = this;
+  if (!user.isModified('password')) {
+    return next();
+  }
+
+  bcrypt.genSalt(10, function(err, salt) {
+    if (err){
+      return next(err); // here
+    }
+
+    bcrypt.hash(user.password, salt, function(err, hash) {
+      if (err) {
+        return next(err); // and here.
+      }
+      user.password = hash;
+      next();
+    });
+  });
+});
+
+
+userSchema.methods.comparePassword = function(candidatePassword, cb) {
+  bcrypt.compare(candidatePassword, this.password, function(err, isMatch) {
+    if (err) return cb(err);
+    cb(null, isMatch);
+  });
+}; // The userSchema code taken from https://github.com/jaredhanson/passport-local
+
+var User = mongoose.model('User', userSchema);
+var Show = mongoose.model('Show', showSchema);
+mongoose.connect('localhost');
+
 
 //Error occurs below
-app.set('port', process.env.PORT || 3000);
+app.set('port', process.env.PORT || 5000);
 app.use(logger('dev'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded());
