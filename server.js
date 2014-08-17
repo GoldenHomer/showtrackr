@@ -1,5 +1,25 @@
-var mongoose = require('mongoose');
-var bcrypt = require('bcryptjs');
+var express = require('express'),
+    path = require('path'),
+    logger = require('morgan'),
+    cookieParser = require('cookie-parser'),
+    bodyParser = require('body-parser'),
+    async = require('async'),
+    request = require('request'),
+    xml2js = require('xml2js'),
+    _ = require('lodash'),
+    session = require('express-session'),
+    passport = require('passport'),
+    LocalStrategy = require('passport-local').Strategy,
+    agenda = require('agenda')({ db: { address: 'localhost:27017/test' } }),
+    sugar = require('sugar'),
+    nodemailer = require('nodemailer'),
+    mongoose = require('mongoose'),
+    bcrypt = require('bcryptjs');
+    csso = require('gulp-csso'),
+    uglify = require('gulp-uglify'),
+    concat = require('gulp-concat'),
+    templateCache = require('gulp-angular-templatecache'),
+    compress = require('compression');
 
 var showSchema = new mongoose.Schema({
   _id: Number,
@@ -26,19 +46,6 @@ var showSchema = new mongoose.Schema({
   }]
 });
 
-var express = require('express');
-var path = require('path');
-var logger = require('morgan');
-var cookieParser = require('cookie-parser');
-var bodyParser = require('body-parser');
-var async = require('async');
-var request = require('request');
-var xml2js = require('xml2js');
-var _ = require('lodash');
-var session = require('express-session');
-var passport = require('passport');
-var LocalStrategy = require('passport-local').Strategy;
-
 //Passport (keep user logged in)
 passport.serializeUser(function(user, done) {
   done(null, user.id);
@@ -50,17 +57,11 @@ passport.deserializeUser(function(id, done) {
   });
 });
 
-
-var User = mongoose.model('User', userSchema);
-var Show = mongoose.model('Show', showSchema);
-mongoose.connect('localhost');
-mongoose.connection.on('error', function(){
-  console.error('Do not forget to run Mongo!');
-});
-
 var app = express();
+var oneDay = 86400000; // One day in milliseconds
 
-app.set('port', process.env.PORT || 5000);
+app.set('port', process.env.PORT || 3000);
+app.use(compress());
 app.use(logger('dev'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded());
@@ -68,12 +69,13 @@ app.use(cookieParser());
 app.use(session({ secret: 'babaganoosh' }));
 app.use(passport.initialize());
 app.use(passport.session());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {maxAge: oneDay}));
 app.use(function(req, res, next) {
   req.user ? res.cookie('user', JSON.stringify(req.user)) : next(); // Create cookie for newly authenticated user.
 });
 
 //Routes
+
 
 app.post('/api/login', passport.authenticate('local'), function(req, res) { // Security risk here but there's nothing crucial data with tracking shows.
   res.cookie('user', JSON.stringify(req.user));
@@ -198,9 +200,13 @@ app.post('/api/shows', function(req, res, next) {
         }
         return next(err);
       } 
+      var alertDate = Date.create('Next ' + show.airsDayOfWeek + ' at ' + show.airsTime).rewind({ hour: 2});
+      agenda.schedule(alertDate, 'send email alert', show.name).repeatEvery('1 week'); // Start agenda task for each show added to DB.
+
       res.send(200);
     });
   });
+
 });
 
 //Fix HTML5 pushState on client-side
@@ -208,13 +214,35 @@ app.get('*', function(req, res) {
   res.redirect('/#' + req.originalUrl);
 });
 
-// Protect routes from unauthenticated requests
-function ensureAuthenticated(req, res, next) {
-  if (req.isAuthenticated()) next();
-  else res.send(401);
-}
+app.post('/api/subscribe', ensureAuthenticated, function(req, res, next) {
+  Show.findById(req.body.showId, function(err, show) {
+    if (err) return next(err);
+    show.subscribers.push(req.user.id);
+    show.save(function(err) {
+      if (err) return next(err);
+      res.send(200);
+    });
+  });
+});
+
+app.post('/api/unsubscribe', ensureAuthenticated, function(req, res, next) {
+  Show.findById(req.body.showId, function(err, show) {
+    if (err) return next(err);
+    var index = show.subscribers.indexOf(req.user.id);
+    show.subscribers.splice(index, 1);
+    show.save(function(err) {
+      if (err) return next(err);
+      res.send(200);
+    });
+  });
+});
 
 // End routes
+
+// Protect routes from unauthenticated requests
+function ensureAuthenticated(req, res, next) {
+  req.isAuthenticated() ? next() : res.send(401); // Ternary (may not work)
+};
 
 //Error Middleware
 app.use(function(err, req, res, next) {
@@ -223,6 +251,13 @@ app.use(function(err, req, res, next) {
 });
 
 
+// MongoDB
+var User = mongoose.model('User', userSchema);
+var Show = mongoose.model('Show', showSchema);
+mongoose.connect('localhost');
+mongoose.connection.on('error', function(){
+  console.error('Do not forget to run Mongo!');
+});
 
 var userSchema = new mongoose.Schema({
   email: { type: String, unique: true },
@@ -257,6 +292,51 @@ userSchema.methods.comparePassword = function(candidatePassword, cb) {
     cb(null, isMatch);
   });
 }; // The userSchema code taken from https://github.com/jaredhanson/passport-local
+
+
+// Email alerts for shows
+agenda.define('send email alert', function(job, done) {
+  Show.findOne({ name: job.attrs.data }).populate('subscribers').exec(function(err, show) {
+    var emails = show.subscribers.map(function(user) {
+      return user.email;
+    });
+
+    var upcomingEpisode = show.episodes.filter(function(episode) {
+      return new Date(episode.firstAired) > new Date();
+    })[0];
+
+    var smtpTransport = nodemailer.createTransport('SMTP', {
+      service: 'SendGrid',
+      auth: { user: 'hslogin', pass: 'hspassword00' }
+    });
+
+    var mailOptions = {
+      from: 'Fred Foo ✔ <foo@blurdybloop.com>',
+      to: emails.join(','),
+      subject: show.name + ' is starting soon!',
+      text: show.name + ' starts in less than 2 hours on ' + show.network + '.\n\n' +
+        'Episode ' + upcomingEpisode.episodeNumber + ' Overview\n\n' + upcomingEpisode.overview
+    };
+
+    smtpTransport.sendMail(mailOptions, function(error, response) {
+      console.log('Message sent: ' + response.message);
+      smtpTransport.close();
+      done();
+    });
+  });
+});
+
+agenda.start();
+
+agenda.on('start', function(job) {
+  console.log("Job %s starting", job.attrs.name);
+});
+
+agenda.on('complete', function(job) {
+  console.log("Job %s finished", job.attrs.name);
+});
+
+
 
 app.listen(app.get('port'), function() {
   console.log('Express server listening on port ' + app.get('port'));
