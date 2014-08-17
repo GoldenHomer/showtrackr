@@ -39,9 +39,63 @@ var session = require('express-session');
 var passport = require('passport');
 var LocalStrategy = require('passport-local').Strategy;
 
+//Passport (keep user logged in)
+passport.serializeUser(function(user, done) {
+  done(null, user.id);
+});
+
+passport.deserializeUser(function(id, done) {
+  User.findById(id, function(err, user) {
+    done(err, user);
+  });
+});
+
+
+var User = mongoose.model('User', userSchema);
+var Show = mongoose.model('Show', showSchema);
+mongoose.connect('localhost');
+mongoose.connection.on('error', function(){
+  console.error('Do not forget to run Mongo!');
+});
+
 var app = express();
 
+app.set('port', process.env.PORT || 5000);
+app.use(logger('dev'));
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded());
+app.use(cookieParser());
+app.use(session({ secret: 'babaganoosh' }));
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(function(req, res, next) {
+  req.user ? res.cookie('user', JSON.stringify(req.user)) : next(); // Create cookie for newly authenticated user.
+});
+
 //Routes
+
+app.post('/api/login', passport.authenticate('local'), function(req, res) { // Security risk here but there's nothing crucial data with tracking shows.
+  res.cookie('user', JSON.stringify(req.user));
+  res.send(req.user);
+});
+
+app.get('/api/logout', function(req, res, next) {
+  req.logout();
+  res.send(200);
+});
+
+app.post('/api/signup', function(req, res, next) {
+  var user = new User({
+    email: req.body.email,
+    password: req.body.password
+  });
+  user.save(function(err) {
+    if (err) return next(err);
+    res.send(200);
+  });
+});
+
 app.get('/api/shows', function(req, res, next) {
   var query = Show.find();
   if (req.query.genre) {
@@ -153,6 +207,13 @@ app.post('/api/shows', function(req, res, next) {
 app.get('*', function(req, res) {
   res.redirect('/#' + req.originalUrl);
 });
+
+// Protect routes from unauthenticated requests
+function ensureAuthenticated(req, res, next) {
+  if (req.isAuthenticated()) next();
+  else res.send(401);
+}
+
 // End routes
 
 //Error Middleware
@@ -196,19 +257,6 @@ userSchema.methods.comparePassword = function(candidatePassword, cb) {
     cb(null, isMatch);
   });
 }; // The userSchema code taken from https://github.com/jaredhanson/passport-local
-
-var User = mongoose.model('User', userSchema);
-var Show = mongoose.model('Show', showSchema);
-mongoose.connect('localhost');
-
-
-//Error occurs below
-app.set('port', process.env.PORT || 5000);
-app.use(logger('dev'));
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded());
-app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(app.get('port'), function() {
   console.log('Express server listening on port ' + app.get('port'));
