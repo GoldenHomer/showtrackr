@@ -1,10 +1,10 @@
 var gulp = require('gulp'),
-	sass = require('gulp-sass'),
-	csso = require('gulp-csso'),
-	uglify = require('gulp-uglify'),
-	concat = require('gulp-concat'),
-	plumber = require('gulp-plumber'), // prevents syntax error from crashing node.
-	templateCache = require('gulp-angular-templatecache');
+    sass = require('gulp-sass'),
+    csso = require('gulp-csso'),
+    uglify = require('gulp-uglify'),
+    concat = require('gulp-concat'),
+    plumber = require('gulp-plumber'), // prevents syntax error from crashing node.
+    templateCache = require('gulp-angular-templatecache');
 
 gulp.task('sass', function() {
   gulp.src('public/stylesheets/style.scss')
@@ -37,6 +37,7 @@ gulp.task('templates', function(){ // Cache the Angular templates.
 
 gulp.task('watch', function() {
   gulp.watch('public/stylesheets/*.scss', ['sass']);
+  gulp.watch('public/views/**/*.html', ['templates']);
   gulp.watch(['public/**/*.js', '!public/app.min.js','!public/vendor'], ['compress']);
 });
 

@@ -10,7 +10,7 @@ var express = require('express'),
     session = require('express-session'),
     passport = require('passport'),
     LocalStrategy = require('passport-local').Strategy,
-    agenda = require('agenda')({ db: { address: 'localhost:27017/test' } }),
+    agenda = require('agenda')({ db: { address: 'mongodb://Hosay:Snoogan9s@ds055699.mongolab.com:55699/showtrackr' } }),
     sugar = require('sugar'),
     nodemailer = require('nodemailer'),
     mongoose = require('mongoose'),
@@ -46,7 +46,44 @@ var showSchema = new mongoose.Schema({
   }]
 });
 
-//Passport (keep user logged in)
+var userSchema = new mongoose.Schema({
+  email: { type: String, unique: true },
+  password: String
+});
+
+userSchema.pre('save', function(next) { // Mongoose serial pre-type middleware that executes one after another, when each middleware calls next.
+  var user = this;
+  if (!user.isModified('password')) {
+    return next();
+  }
+
+  bcrypt.genSalt(10, function(err, salt) {
+    if (err){
+      return next(err); // here
+    }
+
+    bcrypt.hash(user.password, salt, function(err, hash) {
+      if (err) {
+        return next(err); // and here.
+      }
+      user.password = hash;
+      next();
+    });
+  });
+});
+
+
+userSchema.methods.comparePassword = function(candidatePassword, cb) {
+  bcrypt.compare(candidatePassword, this.password, function(err, isMatch) {
+    if (err) return cb(err);
+    cb(null, isMatch);
+  });
+}; // The userSchema code taken from https://github.com/jaredhanson/passport-local
+
+var User = mongoose.model('User', userSchema);
+var Show = mongoose.model('Show', showSchema);
+
+//Passport methods (keep user logged in)
 passport.serializeUser(function(user, done) {
   done(null, user.id);
 });
@@ -56,6 +93,24 @@ passport.deserializeUser(function(id, done) {
     done(err, user);
   });
 });
+
+passport.use(new LocalStrategy({usernameField:'email'},function(email, password, done){
+  User.findOne({email: email}, function(err, user){
+    if(err) return done(err);
+    if(!user) return done(null, false);
+    user.comparePassword(password, function(err, isMatch){
+      if(err) return done(err);
+      if(isMatch) return done(null, user);
+      return done(null, false);
+    });
+  });
+}));
+
+function ensureAuthenticated(req, res, next) { // Protect routes from unauthenticated requests
+  req.isAuthenticated() ? next() : res.send(401); // Ternary (may not work)
+};
+
+mongoose.connect('mongodb://Hosay:Snoogan9s@ds055699.mongolab.com:55699/showtrackr');
 
 var app = express();
 var oneDay = 86400000; // One day in milliseconds
@@ -123,6 +178,29 @@ app.get('/api/shows/:id', function(req, res, next) {
   });
 });
 
+app.post('/api/subscribe', ensureAuthenticated, function(req, res, next) {
+  Show.findById(req.body.showId, function(err, show) {
+    if (err) return next(err);
+    show.subscribers.push(req.user.id);
+    show.save(function(err) {
+      if (err) return next(err);
+      res.send(200);
+    });
+  });
+});
+
+app.post('/api/unsubscribe', ensureAuthenticated, function(req, res, next) {
+  Show.findById(req.body.showId, function(err, show) {
+    if (err) return next(err);
+    var index = show.subscribers.indexOf(req.user.id);
+    show.subscribers.splice(index, 1);
+    show.save(function(err) {
+      if (err) return next(err);
+      res.send(200);
+    });
+  });
+});
+
 app.post('/api/shows', function(req, res, next) {
   var apiKey = '9EF1D1E7D28FDA0B';
   var parser = xml2js.Parser({
@@ -132,8 +210,8 @@ app.post('/api/shows', function(req, res, next) {
   
   var seriesName = req.body.showName
     .toLowerCase()
-    .replace(/ /g, '_')
-    .replace(/[^\w-]+/g, '');
+    .replace(/ /g, '_') // replace single spaces with underscore.
+    .replace(/[^\w-]+/g, ''); // replace any alphanumeric char at beginning
   
   async.waterfall([ // https://github.com/caolan/async#waterfalltasks-callback
     function(callback) {
@@ -143,7 +221,6 @@ app.post('/api/shows', function(req, res, next) {
           if(!result.data.series){
             return res.send(404, {message: req.body.showName + ' was not found.'});
           }
-
           var seriesId = result.data.series.seriesid || result.data.series[0].seriesid;
           callback(err, seriesId);
         });
@@ -213,36 +290,8 @@ app.post('/api/shows', function(req, res, next) {
 app.get('*', function(req, res) {
   res.redirect('/#' + req.originalUrl);
 });
-
-app.post('/api/subscribe', ensureAuthenticated, function(req, res, next) {
-  Show.findById(req.body.showId, function(err, show) {
-    if (err) return next(err);
-    show.subscribers.push(req.user.id);
-    show.save(function(err) {
-      if (err) return next(err);
-      res.send(200);
-    });
-  });
-});
-
-app.post('/api/unsubscribe', ensureAuthenticated, function(req, res, next) {
-  Show.findById(req.body.showId, function(err, show) {
-    if (err) return next(err);
-    var index = show.subscribers.indexOf(req.user.id);
-    show.subscribers.splice(index, 1);
-    show.save(function(err) {
-      if (err) return next(err);
-      res.send(200);
-    });
-  });
-});
-
 // End routes
 
-// Protect routes from unauthenticated requests
-function ensureAuthenticated(req, res, next) {
-  req.isAuthenticated() ? next() : res.send(401); // Ternary (may not work)
-};
 
 //Error Middleware
 app.use(function(err, req, res, next) {
@@ -250,49 +299,14 @@ app.use(function(err, req, res, next) {
   res.send(500, { message: err.message });
 });
 
+app.listen(app.get('port'), function() {
+  console.log('Express server listening on port ' + app.get('port'));
+});
 
 // MongoDB
-var User = mongoose.model('User', userSchema);
-var Show = mongoose.model('Show', showSchema);
-mongoose.connect('localhost');
 mongoose.connection.on('error', function(){
   console.error('Do not forget to run Mongo!');
 });
-
-var userSchema = new mongoose.Schema({
-  email: { type: String, unique: true },
-  password: String
-});
-
-userSchema.pre('save', function(next) { // Mongoose serial pre-type middleware that executes one after another, when each middleware calls next.
-  var user = this;
-  if (!user.isModified('password')) {
-    return next();
-  }
-
-  bcrypt.genSalt(10, function(err, salt) {
-    if (err){
-      return next(err); // here
-    }
-
-    bcrypt.hash(user.password, salt, function(err, hash) {
-      if (err) {
-        return next(err); // and here.
-      }
-      user.password = hash;
-      next();
-    });
-  });
-});
-
-
-userSchema.methods.comparePassword = function(candidatePassword, cb) {
-  bcrypt.compare(candidatePassword, this.password, function(err, isMatch) {
-    if (err) return cb(err);
-    cb(null, isMatch);
-  });
-}; // The userSchema code taken from https://github.com/jaredhanson/passport-local
-
 
 // Email alerts for shows
 agenda.define('send email alert', function(job, done) {
@@ -334,10 +348,4 @@ agenda.on('start', function(job) {
 
 agenda.on('complete', function(job) {
   console.log("Job %s finished", job.attrs.name);
-});
-
-
-
-app.listen(app.get('port'), function() {
-  console.log('Express server listening on port ' + app.get('port'));
 });
