@@ -10,7 +10,7 @@ var express = require('express'),
     session = require('express-session'),
     passport = require('passport'),
     LocalStrategy = require('passport-local').Strategy,
-    agenda = require('agenda')({ db: { address: 'mongodb://Hosay:Snoogan9s@ds055699.mongolab.com:55699/showtrackr' } }),
+    agenda = require('agenda')({ db: { address: 'mongodb://hosay:Snoogan9s@ds055699.mongolab.com:55699/showtrackr' } }),
     sugar = require('sugar'),
     nodemailer = require('nodemailer'),
     mongoose = require('mongoose'),
@@ -110,7 +110,7 @@ function ensureAuthenticated(req, res, next) { // Protect routes from unauthenti
   req.isAuthenticated() ? next() : res.send(401); // Ternary (may not work)
 };
 
-mongoose.connect('mongodb://Hosay:Snoogan9s@ds055699.mongolab.com:55699/showtrackr');
+mongoose.connect('mongodb://hosay:Snoogan9s@ds055699.mongolab.com:55699/showtrackr');
 
 var app = express();
 var oneDay = 86400000; // One day in milliseconds
